@@ -35,7 +35,9 @@ describe("signed session cookies", () => {
 
   it("rejects a cookie whose signed value has been altered", async () => {
     const cookie = await createSessionCookie(SESSION_SECRET, NOW_MS);
-    const altered = `${cookie.slice(0, -1)}${cookie.endsWith("A") ? "B" : "A"}`;
+    const [nonce, expiration, signature] = cookie.split(".");
+    const alteredNonce = `${nonce.startsWith("A") ? "B" : "A"}${nonce.slice(1)}`;
+    const altered = [alteredNonce, expiration, signature].join(".");
 
     await expect(
       verifySessionCookie(altered, SESSION_SECRET, NOW_MS),

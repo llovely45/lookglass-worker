@@ -5,6 +5,8 @@ import type {
 import { describe, expect, it } from "vitest";
 
 import {
+  deleteMonitor,
+  deletePanel,
   deleteResultsBefore,
   insertCheckResults,
   listEnabledMonitors,
@@ -29,6 +31,12 @@ class SmallD1Mock {
     const call: PreparedCall = { sql, binds: [] };
     this.prepared.push(call);
     const statement = {
+      get sql() {
+        return call.sql;
+      },
+      get binds() {
+        return call.binds;
+      },
       bind: (...values: unknown[]) => {
         call.binds = values;
         return statement;
@@ -217,6 +225,37 @@ describe("D1 repositories", () => {
       /DELETE FROM\s+check_results[\s\S]*checked_at\s*<\s*\?/i,
     );
     expect(db.prepared[0].binds).toEqual([1735689600]);
+  });
+
+  it("deletes a panel's results before its monitors and panel in one batch", async () => {
+    const db = new SmallD1Mock();
+
+    await expect(deletePanel(asD1(db), "p1")).resolves.toBe(true);
+
+    expect(db.batches).toHaveLength(1);
+    expect(db.batches[0].map(({ sql }) => sql)).toEqual([
+      expect.stringMatching(/DELETE FROM\s+check_results/i),
+      expect.stringMatching(/DELETE FROM\s+monitors/i),
+      expect.stringMatching(/DELETE FROM\s+panels/i),
+    ]);
+    expect(db.batches[0].map(({ binds }) => binds)).toEqual([
+      ["p1"],
+      ["p1"],
+      ["p1"],
+    ]);
+  });
+
+  it("deletes a monitor's results before its monitor in one batch", async () => {
+    const db = new SmallD1Mock();
+
+    await expect(deleteMonitor(asD1(db), "m1")).resolves.toBe(true);
+
+    expect(db.batches).toHaveLength(1);
+    expect(db.batches[0].map(({ sql }) => sql)).toEqual([
+      expect.stringMatching(/DELETE FROM\s+check_results/i),
+      expect.stringMatching(/DELETE FROM\s+monitors/i),
+    ]);
+    expect(db.batches[0].map(({ binds }) => binds)).toEqual([["m1"], ["m1"]]);
   });
 
   it("uses an atomic insert-or-update lease and reports whether it was acquired", async () => {

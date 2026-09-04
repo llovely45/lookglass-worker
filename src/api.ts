@@ -120,6 +120,9 @@ export function createApp(): App {
   const app = new Hono<AppEnv>();
 
   app.use("*", corsMiddleware);
+  app.use("/api/auth/login", exactOriginMiddleware);
+  app.use("/api/auth/logout", exactOriginMiddleware);
+  app.use("/api/auth/logout", sessionMiddleware);
 
   app.get("/healthz", (c) => c.json({ ok: true }));
 
@@ -237,6 +240,11 @@ export function createApp(): App {
       return errorResponse(c, 422, "invalid_input", validation.message);
     }
 
+    const panel = await getPanel(c.env.DB, validation.value.panel_id);
+    if (!panel) {
+      return errorResponse(c, 422, "invalid_input", "panel_id references an unknown panel");
+    }
+
     const monitor = await insertMonitor(
       c.env.DB,
       newId(),
@@ -263,6 +271,11 @@ export function createApp(): App {
     const validation = validateMonitorInput(body);
     if (!validation.ok) {
       return errorResponse(c, 422, "invalid_input", validation.message);
+    }
+
+    const panel = await getPanel(c.env.DB, validation.value.panel_id);
+    if (!panel) {
+      return errorResponse(c, 422, "invalid_input", "panel_id references an unknown panel");
     }
 
     const id = c.req.param("id") ?? "";
