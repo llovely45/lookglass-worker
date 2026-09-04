@@ -21,8 +21,8 @@ Create the database first, then copy the `database_id` returned by
 must be copied before running remote migrations, Worker build validation, or
 deployment. Never invent or substitute a database ID.
 
-The checked-in `FRONTEND_ORIGIN` is the Pages default example
-`https://lookglass-frontend.pages.dev`, and the checked-in
+The checked-in `FRONTEND_ORIGIN` is the current public frontend origin
+`https://home.nmsl.best`, and the checked-in
 `R2_PUBLIC_BASE_URL` is the non-production example `https://status.example.com`.
 Replace both with the deployed origins before production deployment.
 
@@ -88,10 +88,9 @@ Before applying the commands below:
    is `public/status.json`.
 3. Set `LOOKGLASS_R2_PUBLIC_BASE_URL` and
    `LOOKGLASS_FRONTEND_ORIGIN` GitHub repository Variables to the exact
-   deployed origins. The checked-in `r2-cors.json` contains the Pages default
-   example;
-   before applying it, replace `https://lookglass-frontend.pages.dev` with
-   the exact deployed Pages origin and keep the single-origin `GET` rule.
+   deployed origins. The checked-in `r2-cors.json` is configured for
+   `https://home.nmsl.best`; if the deployed frontend origin changes, update
+   it before applying the single-origin `GET` rule.
 4. Keep the API token and secrets out of git. The D1 ID and deployed origins
    are non-secret configuration values; GitHub Actions replaces the checked-in
    placeholders only in its runner-local copy before the main deployment. The
@@ -122,9 +121,9 @@ API token, or secret is committed here.
 ## R2 CORS and static Pages data flow
 
 `r2-cors.json` uses Wrangler's current `{ "rules": [...] }` request shape. It
-allows only `GET` from one Pages origin and exposes `Content-Type`, `ETag`, and
-`Cache-Control`. Replace the checked-in Pages default example origin with the
-exact deployed Pages origin before running:
+currently allows only `GET` from `https://home.nmsl.best` and exposes
+`Content-Type`, `ETag`, and `Cache-Control`. Update that origin if the deployed
+frontend domain changes before running:
 
 ```bash
 npx wrangler r2 bucket cors set lookglass-status --file r2-cors.json

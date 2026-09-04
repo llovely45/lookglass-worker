@@ -2,7 +2,7 @@
   "rules": [
     {
       "allowed": {
-        "origins": ["https://lookglass-frontend.pages.dev"],
+        "origins": ["https://home.nmsl.best"],
         "methods": ["GET"]
       },
       "exposeHeaders": ["Content-Type", "ETag", "Cache-Control"]
