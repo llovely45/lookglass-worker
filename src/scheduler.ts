@@ -108,8 +108,20 @@ export async function runScheduled(
 
   const listMonitors = deps.listEnabledMonitors ?? listEnabledMonitors;
   const monitors = await listMonitors(env.DB);
+  const readPanels = deps.listPanels ?? listPanels;
+  const panels = await readPanels(env.DB);
+  const onlyNavigationPanelIds = new Set(
+    panels.filter((panel) => panel.nav_only).map((panel) => panel.id),
+  );
+  const scheduledMonitors = monitors.filter(
+    (monitor) => !onlyNavigationPanelIds.has(monitor.panel_id),
+  );
   const checker = deps.runCheck ?? runCheck;
-  const results = await runChecksBounded(monitors, scheduledSeconds, checker);
+  const results = await runChecksBounded(
+    scheduledMonitors,
+    scheduledSeconds,
+    checker,
+  );
 
   const insertResults = deps.insertCheckResults ?? insertCheckResults;
   await insertResults(env.DB, results);
@@ -127,11 +139,7 @@ export async function runScheduled(
   }
 
   const readResults = deps.listResultsSince ?? listResultsSince;
-  const readPanels = deps.listPanels ?? listPanels;
-  const [storedResults, panels] = await Promise.all([
-    readResults(env.DB, cutoff),
-    readPanels(env.DB),
-  ]);
+  const storedResults = await readResults(env.DB, cutoff);
   const snapshot: StatusSnapshot = aggregateResults(
     panels as readonly PanelRecord[],
     monitors,

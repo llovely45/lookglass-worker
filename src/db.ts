@@ -13,8 +13,9 @@ import type {
   RawCheckResult,
 } from "./types";
 
-type PanelRow = Omit<PanelRecord, "enabled"> & {
+type PanelRow = Omit<PanelRecord, "enabled" | "nav_only"> & {
   enabled: number | boolean;
+  nav_only: number | boolean;
 };
 
 type MonitorRow = Omit<MonitorRecord, "enabled"> & {
@@ -29,6 +30,7 @@ const PANEL_COLUMNS = `
   id,
   name,
   logo_url,
+  nav_only,
   sort_order,
   enabled,
   created_at,
@@ -84,6 +86,7 @@ function mapPanel(row: PanelRow): PanelRecord {
     id: row.id,
     name: row.name,
     logo_url: row.logo_url,
+    nav_only: mapSqliteEnabled(row.nav_only),
     sort_order: row.sort_order,
     enabled: mapSqliteEnabled(row.enabled),
     created_at: row.created_at,
@@ -181,7 +184,7 @@ export async function listMonitorsByPanel(
   return result.results.map(mapMonitor);
 }
 
-/** List monitors eligible for the scheduler and public status output. */
+/** List enabled monitors for the public snapshot; the scheduler filters NAV-only panels. */
 export async function listEnabledMonitors(
   db: D1Database,
 ): Promise<MonitorRecord[]> {
@@ -318,13 +321,14 @@ export async function insertPanel(
   await db
     .prepare(
       `INSERT INTO panels (
-        id, name, logo_url, sort_order, enabled, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        id, name, logo_url, nav_only, sort_order, enabled, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
       input.name,
       input.logo_url,
+      input.nav_only ? 1 : 0,
       input.sort_order,
       input.enabled ? 1 : 0,
       nowSeconds,
@@ -349,12 +353,13 @@ export async function updatePanel(
   const result = await db
     .prepare(
       `UPDATE panels
-       SET name = ?, logo_url = ?, sort_order = ?, enabled = ?, updated_at = ?
+       SET name = ?, logo_url = ?, nav_only = ?, sort_order = ?, enabled = ?, updated_at = ?
        WHERE id = ?`,
     )
     .bind(
       input.name,
       input.logo_url,
+      input.nav_only ? 1 : 0,
       input.sort_order,
       input.enabled ? 1 : 0,
       nowSeconds,

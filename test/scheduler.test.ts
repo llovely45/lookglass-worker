@@ -16,11 +16,14 @@ const MINUTE = START + 60;
 const BOUNDARY = START + 1_800;
 const JITTERED_BOUNDARY = BOUNDARY + 20;
 
-function panel(): PanelRecord {
+type PanelWithNavOnly = PanelRecord & { nav_only?: boolean };
+
+function panel(navOnly = false): PanelWithNavOnly {
   return {
     id: "p1",
     name: "Primary",
     logo_url: null,
+    nav_only: navOnly,
     sort_order: 0,
     enabled: true,
     created_at: START,
@@ -171,6 +174,37 @@ describe("scheduled monitoring", () => {
     expect(deps.insertCheckResults).not.toHaveBeenCalled();
     expect(deps.deleteResultsBefore).not.toHaveBeenCalled();
     expect(calls.snapshots).toHaveLength(0);
+  });
+
+  it("does not execute monitors belonging to an only-NAV panel", async () => {
+    const navPanel: PanelWithNavOnly = {
+      ...panel(true),
+      id: "nav-panel",
+    };
+    const navHttpMonitor = {
+      ...monitor("nav-http-monitor"),
+      panel_id: navPanel.id,
+    };
+    const navTcpMonitor = {
+      ...monitor("nav-monitor"),
+      panel_id: navPanel.id,
+      kind: "tcping" as const,
+      target: "8.8.8.8",
+      port: 53,
+    };
+    const { deps, calls } = baseDeps([
+      monitor("m1"),
+      navHttpMonitor,
+      navTcpMonitor,
+    ]);
+    deps.listPanels = vi.fn(async () => [panel(), navPanel]);
+
+    await runScheduled(env(), MINUTE * 1_000, deps);
+
+    expect(calls.checked).toEqual(["m1"]);
+    expect(calls.inserted[0]?.map(({ monitor_id }) => monitor_id)).toEqual([
+      "m1",
+    ]);
   });
 
   it("settles a rejected monitor as an error while storing other results", async () => {

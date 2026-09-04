@@ -15,6 +15,7 @@ export interface PanelRecord {
   id: string;
   name: string;
   logo_url: string | null;
+  nav_only: boolean;
   sort_order: number;
   enabled: boolean;
   created_at: number;
@@ -39,6 +40,7 @@ export interface MonitorRecord {
 export interface PanelInput {
   name: string;
   logo_url: string | null;
+  nav_only: boolean;
   sort_order: number;
   enabled: boolean;
 }

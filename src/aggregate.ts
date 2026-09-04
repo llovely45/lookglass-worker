@@ -25,6 +25,7 @@ export interface StatusSnapshot {
     id: string;
     name: string;
     logoUrl: string | null;
+    navOnly: boolean;
     monitors: Array<{
       id: string;
       name: string;
@@ -149,6 +150,7 @@ export function aggregateResults(
       id: panel.id,
       name: panel.name,
       logoUrl: panel.logo_url,
+      navOnly: panel.nav_only,
       monitors: (monitorsByPanel.get(panel.id) ?? []).map((monitor) => ({
         id: monitor.id,
         name: monitor.name,

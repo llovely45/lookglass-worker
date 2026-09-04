@@ -230,10 +230,16 @@ describe("Lookglass admin API", () => {
 
     const panelResponse = await app.request(
       "/api/admin/panels",
-      jsonInit({ name: "Main" }, { Cookie: cookie, Origin: FRONTEND_ORIGIN }),
+      jsonInit(
+        { name: "Main", nav_only: true },
+        { Cookie: cookie, Origin: FRONTEND_ORIGIN },
+      ),
       env,
     );
     expect(panelResponse.status).toBe(201);
+    await expect(panelResponse.json()).resolves.toMatchObject({
+      nav_only: true,
+    });
 
     const monitorResponse = await app.request(
       "/api/admin/monitors",

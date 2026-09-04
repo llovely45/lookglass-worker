@@ -57,6 +57,12 @@ disable navigation. The monitored `target` remains independent, so TCPing
 monitors and health-check URLs do not become navigation destinations by
 accident.
 
+Each panel also has a `nav_only` switch. When it is enabled, the panel and its
+enabled monitors remain in the public R2 snapshot for navigation, but the
+Worker skips every HTTP GET and TCPing check under that panel. The frontend
+renders that panel with NAV cards in both LG and NAV display modes. The switch
+defaults to `false` for custom existing and newly created panels.
+
 The `0002_monitor_link_url.sql` migration adds this nullable field to existing
 databases. Apply all pending migrations before creating or editing monitors.
 
@@ -64,8 +70,13 @@ The `0003_seed_navigation_links.sql` migration adds the 38 entries from the
 source navigation page under these six panels: 开发工具、代理工具、人工智能、
 设计资源、云服务 and 18+. The Lin-related, leisure, and software-
 recommendation panels are intentionally not seeded. Every seeded entry uses
-its source URL for both `target` and `link_url`, so it is monitored and opens
-the same destination in NAV mode.
+its source URL for both `target` and `link_url`, so it opens the same
+destination in NAV mode; the following migration marks these panels as
+navigation-only, so those seeded entries are not probed by the Worker.
+
+The `0004_panel_nav_only.sql` migration adds the panel switch and enables it
+for the six seeded navigation panels. Custom panels remain regular monitoring
+panels until the switch is enabled in the admin UI.
 
 ## Local validation
 
@@ -184,7 +195,7 @@ curl --fail-with-body -b "$COOKIE_JAR" \
 curl --fail-with-body -b "$COOKIE_JAR" \
   -H "Origin: $FRONTEND_ORIGIN" \
   -H "Content-Type: application/json" \
-  --data '{"name":"Task 10 smoke panel","logo_url":null,"sort_order":0,"enabled":true}' \
+  --data '{"name":"Task 10 smoke panel","logo_url":null,"nav_only":false,"sort_order":0,"enabled":true}' \
   "$WORKER_ORIGIN/api/admin/panels"
 
 export PANEL_ID="<panel id returned above>"

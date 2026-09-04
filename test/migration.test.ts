@@ -9,6 +9,9 @@ const migrationPath = fileURLToPath(
 const linkMigrationPath = fileURLToPath(
   new URL("../migrations/0002_monitor_link_url.sql", import.meta.url),
 );
+const navOnlyMigrationPath = fileURLToPath(
+  new URL("../migrations/0004_panel_nav_only.sql", import.meta.url),
+);
 
 describe("initial D1 migration", () => {
   it("declares all required tables and columns", () => {
@@ -89,5 +92,19 @@ describe("monitor navigation link migration", () => {
     expect(sql).toMatch(
       /ALTER TABLE\s+monitors\s+ADD COLUMN\s+link_url\s+TEXT/i,
     );
+  });
+});
+
+describe("panel only-NAV migration", () => {
+  it("adds a disabled-by-default switch and enables the seeded navigation panels", () => {
+    expect(existsSync(navOnlyMigrationPath)).toBe(true);
+    const sql = readFileSync(navOnlyMigrationPath, "utf8");
+
+    expect(sql).toMatch(
+      /ALTER TABLE\s+panels\s+ADD COLUMN\s+nav_only\s+INTEGER\s+NOT NULL\s+DEFAULT\s+0/i,
+    );
+    expect(sql).toMatch(/UPDATE\s+panels[\s\S]*nav_only\s*=\s*1/i);
+    expect(sql).toContain("nav-development-tools");
+    expect(sql).toContain("nav-18-plus");
   });
 });

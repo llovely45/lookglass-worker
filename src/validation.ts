@@ -739,6 +739,15 @@ function validateEnabled(value: unknown): ValidationResult<boolean> {
     : failure("enabled must be a boolean");
 }
 
+function validateNavOnly(value: unknown): ValidationResult<boolean> {
+  if (value === undefined) {
+    return { ok: true, value: false };
+  }
+  return typeof value === "boolean"
+    ? { ok: true, value }
+    : failure("nav_only must be a boolean");
+}
+
 export function validateTcpTarget(
   host: unknown,
   port: unknown,
@@ -775,12 +784,17 @@ export function validatePanelInput(input: unknown): ValidationResult<PanelInput>
   if (!enabled.ok) {
     return enabled;
   }
+  const navOnly = validateNavOnly(input.nav_only);
+  if (!navOnly.ok) {
+    return navOnly;
+  }
 
   return {
     ok: true,
     value: {
       name: name.value,
       logo_url: logoUrl.value,
+      nav_only: navOnly.value,
       sort_order: sortOrder.value,
       enabled: enabled.value,
     },

@@ -10,12 +10,14 @@ import {
   deleteResultsBefore,
   insertCheckResults,
   insertMonitor,
+  insertPanel,
   listEnabledMonitors,
   listMonitorsByPanel,
   listPanels,
   listResultsSince,
   tryAcquireSchedulerLease,
   updateMonitor,
+  updatePanel,
 } from "../src/db";
 import type { MonitorInput } from "../src/types";
 
@@ -89,6 +91,7 @@ describe("D1 repositories", () => {
         id: "p1",
         name: "Primary",
         logo_url: null,
+        nav_only: 1,
         sort_order: 2,
         enabled: 1,
         created_at: 10,
@@ -101,6 +104,7 @@ describe("D1 repositories", () => {
         id: "p1",
         name: "Primary",
         logo_url: null,
+        nav_only: true,
         sort_order: 2,
         enabled: true,
         created_at: 10,
@@ -204,6 +208,28 @@ describe("D1 repositories", () => {
     await expect(updateMonitor(asD1(db), "m1", input, 21)).resolves.toBe(true);
     expect(db.prepared[1].sql).toMatch(/link_url/i);
     expect(db.prepared[1].binds).toContain(input.link_url);
+  });
+
+  it("persists the only-NAV panel switch on insert and update", async () => {
+    const db = new SmallD1Mock();
+    const input = {
+      name: "Navigation",
+      logo_url: null,
+      sort_order: 0,
+      enabled: true,
+      nav_only: true,
+    };
+
+    await expect(insertPanel(asD1(db), "p1", input, 20)).resolves.toMatchObject({
+      id: "p1",
+      nav_only: true,
+    });
+    expect(db.prepared[0].sql).toMatch(/nav_only/i);
+    expect(db.prepared[0].binds).toContain(1);
+
+    await expect(updatePanel(asD1(db), "p1", input, 21)).resolves.toBe(true);
+    expect(db.prepared[1].sql).toMatch(/nav_only/i);
+    expect(db.prepared[1].binds).toContain(1);
   });
 
   it("binds every result column and inserts results in a batch", async () => {

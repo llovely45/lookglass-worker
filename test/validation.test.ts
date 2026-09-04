@@ -279,8 +279,25 @@ describe("panel input validation", () => {
         logo_url: null,
         sort_order: 0,
         enabled: true,
+        nav_only: false,
       },
     });
+  });
+
+  it("accepts the only-NAV switch and rejects non-boolean values", () => {
+    expect(validatePanelInput({ name: "Navigation", nav_only: true })).toEqual({
+      ok: true,
+      value: {
+        name: "Navigation",
+        logo_url: null,
+        sort_order: 0,
+        enabled: true,
+        nav_only: true,
+      },
+    });
+    expect(validatePanelInput({ name: "Navigation", nav_only: "true" }).ok).toBe(
+      false,
+    );
   });
 
   it("only accepts HTTPS public logo URLs", () => {

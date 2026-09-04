@@ -27,6 +27,7 @@ function panel(
     id,
     name: `Panel ${id}`,
     logo_url: null,
+    nav_only: false,
     sort_order,
     enabled,
     created_at: START,
@@ -149,6 +150,20 @@ describe("half-hour status aggregation", () => {
     expect(snapshot.panels[0].monitors[0]).toMatchObject({ linkUrl });
   });
 
+  it("marks only-NAV panels in the public snapshot while keeping their monitors", () => {
+    const navOnlyPanel = { ...panel("p1"), nav_only: true };
+    const snapshot = aggregateResults(
+      [navOnlyPanel],
+      [monitor("m1")],
+      [],
+      START,
+    );
+
+    expect(snapshot.panels[0]).toMatchObject({ navOnly: true });
+    expect(snapshot.panels[0].monitors).toHaveLength(1);
+    expect(snapshot.panels[0].monitors[0].samples).toEqual([]);
+  });
+
   it("includes the exact 24-hour cutoff and excludes older rows", () => {
     const snapshot = aggregateResults(
       [panel("p1")],
@@ -208,6 +223,7 @@ describe("R2 status snapshot writes", () => {
           id: "p1",
           name: "Panel p1",
           logoUrl: null,
+          navOnly: false,
           monitors: [
             {
               id: "m1",
