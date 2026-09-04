@@ -40,6 +40,7 @@ const MONITOR_COLUMNS = `
   panel_id,
   name,
   logo_url,
+  link_url,
   kind,
   target,
   port,
@@ -96,6 +97,7 @@ function mapMonitor(row: MonitorRow): MonitorRecord {
     panel_id: row.panel_id,
     name: row.name,
     logo_url: row.logo_url,
+    link_url: row.link_url ?? null,
     kind: row.kind,
     target: row.target,
     port: row.port,
@@ -189,6 +191,7 @@ export async function listEnabledMonitors(
               m.panel_id,
               m.name,
               m.logo_url,
+              m.link_url,
               m.kind,
               m.target,
               m.port,
@@ -411,15 +414,16 @@ export async function insertMonitor(
   await db
     .prepare(
       `INSERT INTO monitors (
-        id, panel_id, name, logo_url, kind, target, port, sort_order, enabled,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        id, panel_id, name, logo_url, link_url, kind, target, port, sort_order,
+        enabled, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
       input.panel_id,
       input.name,
       input.logo_url,
+      input.link_url,
       input.kind,
       input.target,
       input.port,
@@ -447,14 +451,15 @@ export async function updateMonitor(
   const result = await db
     .prepare(
       `UPDATE monitors
-       SET panel_id = ?, name = ?, logo_url = ?, kind = ?, target = ?, port = ?,
-           sort_order = ?, enabled = ?, updated_at = ?
+       SET panel_id = ?, name = ?, logo_url = ?, link_url = ?, kind = ?,
+           target = ?, port = ?, sort_order = ?, enabled = ?, updated_at = ?
        WHERE id = ?`,
     )
     .bind(
       input.panel_id,
       input.name,
       input.logo_url,
+      input.link_url,
       input.kind,
       input.target,
       input.port,

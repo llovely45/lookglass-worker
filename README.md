@@ -49,6 +49,17 @@ For local development, copy `.dev.vars.example` to `.dev.vars` and replace the
 clearly non-production token and secret placeholders with local random values.
 `.dev.vars` is ignored by git.
 
+## Monitor navigation links
+
+Each monitor has an optional `link_url` field for the public navigation mode.
+It accepts a public `http://` or `https://` URL and may be set to `null` to
+disable navigation. The monitored `target` remains independent, so TCPing
+monitors and health-check URLs do not become navigation destinations by
+accident.
+
+The `0002_monitor_link_url.sql` migration adds this nullable field to existing
+databases. Apply all pending migrations before creating or editing monitors.
+
 ## Local validation
 
 Run these commands from this directory:
@@ -174,7 +185,7 @@ export PANEL_ID="<panel id returned above>"
 curl --fail-with-body -b "$COOKIE_JAR" \
   -H "Origin: $FRONTEND_ORIGIN" \
   -H "Content-Type: application/json" \
-  --data "{\"panel_id\":\"$PANEL_ID\",\"name\":\"Task 10 smoke monitor\",\"logo_url\":null,\"kind\":\"http_get\",\"target\":\"https://example.com/\",\"port\":null,\"sort_order\":0,\"enabled\":true}" \
+  --data "{\"panel_id\":\"$PANEL_ID\",\"name\":\"Task 10 smoke monitor\",\"logo_url\":null,\"link_url\":\"https://example.com/\",\"kind\":\"http_get\",\"target\":\"https://example.com/\",\"port\":null,\"sort_order\":0,\"enabled\":true}" \
   "$WORKER_ORIGIN/api/admin/monitors"
 ```
 

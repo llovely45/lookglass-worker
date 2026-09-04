@@ -9,12 +9,15 @@ import {
   deletePanel,
   deleteResultsBefore,
   insertCheckResults,
+  insertMonitor,
   listEnabledMonitors,
   listMonitorsByPanel,
   listPanels,
   listResultsSince,
   tryAcquireSchedulerLease,
+  updateMonitor,
 } from "../src/db";
+import type { MonitorInput } from "../src/types";
 
 type PreparedCall = {
   sql: string;
@@ -116,6 +119,7 @@ describe("D1 repositories", () => {
         panel_id: "p1",
         name: "Homepage",
         logo_url: null,
+        link_url: "https://www.example.com/",
         kind: "http_get",
         target: "https://example.com/health",
         port: null,
@@ -132,6 +136,7 @@ describe("D1 repositories", () => {
         panel_id: "p1",
         name: "Homepage",
         logo_url: null,
+        link_url: "https://www.example.com/",
         kind: "http_get",
         target: "https://example.com/health",
         port: null,
@@ -155,6 +160,7 @@ describe("D1 repositories", () => {
         panel_id: "p1",
         name: "DNS",
         logo_url: "https://example.com/logo.png",
+        link_url: null,
         kind: "tcping",
         target: "8.8.8.8",
         port: 53,
@@ -170,6 +176,34 @@ describe("D1 repositories", () => {
     ]);
     expect(db.prepared[0].sql).toMatch(/WHERE\s+[^;]*enabled\s*=\s*1/i);
     expect(db.prepared[0].sql).toMatch(/ORDER BY\s+[^;]*sort_order\s+ASC/i);
+  });
+
+  it("persists an optional monitor navigation link on insert and update", async () => {
+    const db = new SmallD1Mock();
+    const input: MonitorInput = {
+      panel_id: "p1",
+      name: "Homepage",
+      logo_url: null,
+      link_url: "https://www.example.com/",
+      kind: "http_get",
+      target: "https://example.com/health",
+      port: null,
+      sort_order: 0,
+      enabled: true,
+    };
+
+    await expect(
+      insertMonitor(asD1(db), "m1", input, 20),
+    ).resolves.toMatchObject({
+      id: "m1",
+      link_url: input.link_url,
+    });
+    expect(db.prepared[0].sql).toMatch(/link_url/i);
+    expect(db.prepared[0].binds).toContain(input.link_url);
+
+    await expect(updateMonitor(asD1(db), "m1", input, 21)).resolves.toBe(true);
+    expect(db.prepared[1].sql).toMatch(/link_url/i);
+    expect(db.prepared[1].binds).toContain(input.link_url);
   });
 
   it("binds every result column and inserts results in a batch", async () => {

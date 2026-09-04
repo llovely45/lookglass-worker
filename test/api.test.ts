@@ -244,12 +244,16 @@ describe("Lookglass admin API", () => {
           kind: "http_get",
           target: "https://example.com/health",
           port: null,
+          link_url: "https://www.example.com/",
         },
         { Cookie: cookie, Origin: FRONTEND_ORIGIN },
       ),
       env,
     );
     expect(monitorResponse.status).toBe(201);
+    await expect(monitorResponse.json()).resolves.toMatchObject({
+      link_url: "https://www.example.com/",
+    });
   });
 
   it("rejects unknown monitor panel references before POST or PATCH writes", async () => {

@@ -34,6 +34,7 @@ function monitor(id: string): MonitorRecord {
     panel_id: "p1",
     name: id,
     logo_url: null,
+    link_url: null,
     kind: "http_get",
     target: `https://${id}.example/health`,
     port: null,

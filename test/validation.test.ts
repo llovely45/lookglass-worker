@@ -306,6 +306,7 @@ describe("monitor input validation", () => {
       value: {
         ...validHttpMonitor,
         logo_url: null,
+        link_url: null,
         sort_order: 0,
         enabled: true,
       },
@@ -318,6 +319,7 @@ describe("monitor input validation", () => {
       value: {
         ...validTcpMonitor,
         logo_url: null,
+        link_url: null,
         sort_order: 0,
         enabled: true,
       },
@@ -351,5 +353,39 @@ describe("monitor input validation", () => {
     expect(
       validateMonitorInput({ ...validHttpMonitor, name: "" }).ok,
     ).toBe(false);
+  });
+
+  it("accepts a public HTTP or HTTPS navigation link and normalizes it", () => {
+    expect(
+      validateMonitorInput({
+        ...validHttpMonitor,
+        link_url: "https://www.example.com/",
+      }),
+    ).toEqual({
+      ok: true,
+      value: {
+        ...validHttpMonitor,
+        logo_url: null,
+        link_url: "https://www.example.com/",
+        sort_order: 0,
+        enabled: true,
+      },
+    });
+
+    expect(validateMonitorInput(validTcpMonitor)).toMatchObject({
+      ok: true,
+      value: { link_url: null },
+    });
+  });
+
+  it.each([
+    "javascript:alert(1)",
+    "data:text/html,<h1>unsafe</h1>",
+    "ftp://www.example.com/",
+    "https://localhost/",
+  ])("rejects an unsafe navigation link: %s", (link_url) => {
+    expect(
+      validateMonitorInput({ ...validHttpMonitor, link_url }),
+    ).toMatchObject({ ok: false });
   });
 });

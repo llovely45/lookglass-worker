@@ -29,6 +29,7 @@ export interface StatusSnapshot {
       id: string;
       name: string;
       logoUrl: string | null;
+      linkUrl: string | null;
       kind: MonitorKind;
       target: string;
       samples: StatusSample[];
@@ -152,6 +153,7 @@ export function aggregateResults(
         id: monitor.id,
         name: monitor.name,
         logoUrl: monitor.logo_url,
+        linkUrl: monitor.link_url,
         kind: monitor.kind,
         target: monitor.target,
         samples: aggregateMonitorSamples(monitor, results, generatedAt),

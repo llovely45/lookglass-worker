@@ -1,10 +1,13 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
 const migrationPath = fileURLToPath(
   new URL("../migrations/0001_initial.sql", import.meta.url),
+);
+const linkMigrationPath = fileURLToPath(
+  new URL("../migrations/0002_monitor_link_url.sql", import.meta.url),
 );
 
 describe("initial D1 migration", () => {
@@ -74,6 +77,17 @@ describe("initial D1 migration", () => {
     );
     expect(sql).toMatch(
       /status\s+TEXT[\s\S]*?latency_ms\s+REAL[\s\S]*?CHECK\s*\(\s*status\s*<>\s*'ok'\s+OR\s+latency_ms\s+IS\s+NOT\s+NULL\s*\)/i,
+    );
+  });
+});
+
+describe("monitor navigation link migration", () => {
+  it("adds a nullable link_url column without changing existing monitor rows", () => {
+    expect(existsSync(linkMigrationPath)).toBe(true);
+    const sql = readFileSync(linkMigrationPath, "utf8");
+
+    expect(sql).toMatch(
+      /ALTER TABLE\s+monitors\s+ADD COLUMN\s+link_url\s+TEXT/i,
     );
   });
 });

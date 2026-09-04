@@ -39,12 +39,14 @@ function monitor(
   panel_id = "p1",
   enabled = true,
   sort_order = 0,
+  link_url: string | null = null,
 ): MonitorRecord {
   return {
     id,
     panel_id,
     name: `Monitor ${id}`,
     logo_url: null,
+    link_url,
     kind: "http_get",
     target: `https://${id}.example/health`,
     port: null,
@@ -135,6 +137,18 @@ describe("half-hour status aggregation", () => {
     expect(snapshot.panels[0].monitors.map(({ id }) => id)).toEqual(["active"]);
   });
 
+  it("includes the configured monitor navigation link in the public snapshot", () => {
+    const linkUrl = "https://www.example.com/";
+    const snapshot = aggregateResults(
+      [panel("p1")],
+      [monitor("m1", "p1", true, 0, linkUrl)],
+      [],
+      START,
+    );
+
+    expect(snapshot.panels[0].monitors[0]).toMatchObject({ linkUrl });
+  });
+
   it("includes the exact 24-hour cutoff and excludes older rows", () => {
     const snapshot = aggregateResults(
       [panel("p1")],
@@ -199,6 +213,7 @@ describe("R2 status snapshot writes", () => {
               id: "m1",
               name: "Monitor m1",
               logoUrl: null,
+              linkUrl: null,
               kind: "http_get",
               target: "https://m1.example/health",
               samples: [{ t: NOW, s: "ok", v: 450, code: 200 }],

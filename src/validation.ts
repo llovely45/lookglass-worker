@@ -615,6 +615,15 @@ function validateHttpsLogo(value: unknown): ValidationResult<string | null> {
   return result.ok ? result : failure(result.message);
 }
 
+function validateNavigationLink(value: unknown): ValidationResult<string | null> {
+  if (value === undefined || value === null) {
+    return { ok: true, value: null };
+  }
+
+  const result = validateUrl(value, ["http:", "https:"]);
+  return result.ok ? result : failure(result.message);
+}
+
 function validateName(value: unknown): ValidationResult<string> {
   if (typeof value !== "string") {
     return failure("name must be a string");
@@ -795,6 +804,10 @@ export function validateMonitorInput(input: unknown): ValidationResult<MonitorIn
   if (!logoUrl.ok) {
     return logoUrl;
   }
+  const linkUrl = validateNavigationLink(input.link_url);
+  if (!linkUrl.ok) {
+    return linkUrl;
+  }
   if (typeof input.kind !== "string" || !MONITOR_KINDS.has(input.kind as MonitorKind)) {
     return failure("kind must be http_get or tcping");
   }
@@ -836,6 +849,7 @@ export function validateMonitorInput(input: unknown): ValidationResult<MonitorIn
       panel_id: panelId.value,
       name: name.value,
       logo_url: logoUrl.value,
+      link_url: linkUrl.value,
       kind,
       target,
       port,

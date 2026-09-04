@@ -26,6 +26,7 @@ export interface MonitorRecord {
   panel_id: string;
   name: string;
   logo_url: string | null;
+  link_url: string | null;
   kind: MonitorKind;
   target: string;
   port: number | null;
@@ -46,6 +47,7 @@ export interface MonitorInput {
   panel_id: string;
   name: string;
   logo_url: string | null;
+  link_url: string | null;
   kind: MonitorKind;
   target: string;
   port: number | null;
