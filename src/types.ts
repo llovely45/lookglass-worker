@@ -1,3 +1,12 @@
+export interface Env {
+  DB: D1Database;
+  STATUS_BUCKET: R2Bucket;
+  ADMIN_TOKEN: string;
+  SESSION_SECRET: string;
+  FRONTEND_ORIGIN: string;
+  R2_PUBLIC_BASE_URL: string;
+}
+
 export type MonitorKind = "http_get" | "tcping";
 
 export type CheckStatus = "ok" | "http_error" | "timeout" | "error";
