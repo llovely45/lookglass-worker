@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lookglass-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "triggers": {
+    "crons": ["*/1 * * * *"]
+  },
+  "vars": {
+    "FRONTEND_ORIGIN": "https://lookglass-frontend.pages.dev",
+    "R2_PUBLIC_BASE_URL": "https://status.example.com"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "lookglass-db",
+      "database_id": ""
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "STATUS_BUCKET",
+      "bucket_name": "lookglass-status"
+    }
+  ]
+}
