@@ -88,25 +88,7 @@ export async function runHttpCheck(
   config: HttpCheckConfig,
   deps: HttpCheckDeps = {},
 ): Promise<RawCheckResult> {
-  let destination: ValidationResult<{ host: string; addresses: string[] }>;
-  try {
-    destination = await validateTarget(config.target, deps);
-  } catch (error) {
-    return result(
-      config,
-      "error",
-      null,
-      null,
-      boundedMessage(error, "destination validation failed"),
-    );
-  }
-
-  if (!destination.ok) {
-    return result(config, "error", null, null, destination.message);
-  }
-
   const controller = new AbortController();
-  const startedAt = performance.now();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
@@ -117,6 +99,15 @@ export async function runHttpCheck(
   const fetcher = deps.fetcher ?? fetch;
 
   try {
+    const destination = await Promise.race([
+      validateTarget(config.target, deps),
+      timeout,
+    ]);
+    if (!destination.ok) {
+      return result(config, "error", null, null, destination.message);
+    }
+
+    const startedAt = performance.now();
     const response = await Promise.race([
       fetcher(config.target, {
         method: "GET",

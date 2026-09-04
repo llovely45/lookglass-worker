@@ -97,38 +97,38 @@ export async function runTcpCheck(
   config: TcpCheckConfig,
   deps: TcpCheckDeps = {},
 ): Promise<RawCheckResult> {
-  let destination: ValidationResult<{ host: string; addresses: string[] }>;
-  try {
-    destination = await validateTarget(config.target, deps);
-  } catch (error) {
-    return result(
-      config,
-      "error",
-      null,
-      boundedMessage(error, "destination validation failed"),
-    );
-  }
-
-  if (!destination.ok) {
-    return result(config, "error", null, destination.message);
-  }
-
-  const address: TcpAddress = {
-    hostname: destination.value.addresses[0],
-    port: config.port,
-  };
   const connector = deps.connector ?? cloudflareConnector;
-  const startedAt = performance.now();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let socket: TcpSocketLike | undefined;
+  let timedOut = false;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(timeoutToken), CHECK_TIMEOUT_MS);
+  });
 
   try {
-    const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(timeoutToken), CHECK_TIMEOUT_MS);
+    const destination = await Promise.race([
+      validateTarget(config.target, deps),
+      timeout,
+    ]);
+    if (!destination.ok) {
+      return result(config, "error", null, destination.message);
+    }
+
+    const address: TcpAddress = {
+      hostname: destination.value.addresses[0],
+      port: config.port,
+    };
+    const startedAt = performance.now();
+    const connectorPromise = Promise.resolve().then(() => connector(address));
+    const guardedConnectorPromise = connectorPromise.then((resolvedSocket) => {
+      if (timedOut) {
+        void closeSocket(resolvedSocket);
+      }
+      return resolvedSocket;
     });
 
     socket = await Promise.race([
-      Promise.resolve().then(() => connector(address)),
+      guardedConnectorPromise,
       timeout,
     ]);
     await Promise.race([socket.opened, timeout]);
@@ -137,6 +137,7 @@ export async function runTcpCheck(
     return result(config, "ok", latency, null);
   } catch (error) {
     if (error === timeoutToken) {
+      timedOut = true;
       return result(config, "timeout", null, "TCP connection timed out");
     }
 
