@@ -2,6 +2,8 @@ import type {
   MonitorInput,
   MonitorKind,
   PanelInput,
+  PublicDestination,
+  PublicDestinationResolver,
   ValidationResult,
 } from "./types";
 
@@ -11,6 +13,7 @@ const MAX_LABEL_LENGTH = 63;
 const MAX_URL_LENGTH = 2048;
 const MAX_IDENTIFIER_LENGTH = 128;
 const MAX_ERROR_MESSAGE_LENGTH = 256;
+const CLOUDFLARE_DOH_ENDPOINT = "https://cloudflare-dns.com/dns-query";
 
 const MONITOR_KINDS = new Set<MonitorKind>(["http_get", "tcping"]);
 
@@ -152,63 +155,102 @@ function parseIpLiteral(value: string): ParsedIp | null {
   return null;
 }
 
-function isIpv4InRange(
-  octets: [number, number, number, number],
-  first: number,
-  secondMin: number,
-  secondMax: number,
-): boolean {
-  return (
-    octets[0] === first &&
-    octets[1] >= secondMin &&
-    octets[1] <= secondMax
-  );
-}
+type Ipv4Cidr = {
+  readonly network: readonly [number, number, number, number];
+  readonly prefix: number;
+};
 
-function isPublicIpv4(octets: [number, number, number, number]): boolean {
-  const [first, second, third] = octets;
-  const isNetwork = (networkFirst: number, networkSecond: number, networkThird: number) =>
-    first === networkFirst &&
-    second === networkSecond &&
-    third === networkThird;
+type Ipv6Cidr = {
+  readonly network: readonly [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ];
+  readonly prefix: number;
+};
 
-  if (
-    first === 0 ||
-    first === 127 ||
-    isIpv4InRange(octets, 10, 0, 255) ||
-    isIpv4InRange(octets, 100, 64, 127) ||
-    isIpv4InRange(octets, 169, 254, 254) ||
-    isIpv4InRange(octets, 172, 16, 31) ||
-    isIpv4InRange(octets, 192, 168, 168) ||
-    isIpv4InRange(octets, 198, 18, 19) ||
-    first >= 224
-  ) {
-    return false;
-  }
+// IANA IPv4 Special-Purpose Address Registry, plus multicast. The broad
+// protocol-assignment ranges intentionally deny more-specific public anycast
+// reservations as well; probes may only use ordinary public unicast space.
+const IPV4_DENYLIST: readonly Ipv4Cidr[] = [
+  { network: [0, 0, 0, 0], prefix: 8 },
+  { network: [10, 0, 0, 0], prefix: 8 },
+  { network: [100, 64, 0, 0], prefix: 10 },
+  { network: [127, 0, 0, 0], prefix: 8 },
+  { network: [169, 254, 0, 0], prefix: 16 },
+  { network: [168, 63, 129, 0], prefix: 24 },
+  { network: [172, 16, 0, 0], prefix: 12 },
+  { network: [192, 0, 0, 0], prefix: 24 },
+  { network: [192, 0, 2, 0], prefix: 24 },
+  { network: [192, 31, 196, 0], prefix: 24 },
+  { network: [192, 52, 193, 0], prefix: 24 },
+  { network: [192, 88, 99, 0], prefix: 24 },
+  { network: [192, 168, 0, 0], prefix: 16 },
+  { network: [192, 175, 48, 0], prefix: 24 },
+  { network: [198, 18, 0, 0], prefix: 15 },
+  { network: [198, 51, 100, 0], prefix: 24 },
+  { network: [203, 0, 113, 0], prefix: 24 },
+  { network: [224, 0, 0, 0], prefix: 4 },
+  { network: [240, 0, 0, 0], prefix: 4 },
+  { network: [255, 255, 255, 255], prefix: 32 },
+];
 
-  if (
-    isNetwork(192, 0, 0) ||
-    isNetwork(192, 0, 2) ||
-    isNetwork(198, 51, 100) ||
-    isNetwork(203, 0, 113) ||
-    isNetwork(192, 88, 99) ||
-    isNetwork(168, 63, 129)
-  ) {
-    return false;
-  }
+// IANA IPv6 Special-Purpose Address Registry, plus multicast and deprecated
+// IPv4-compatible space. This includes ranges whose registry entry is
+// globally reachable today because they are protocol-specific, not ordinary
+// monitor destinations.
+const IPV6_DENYLIST: readonly Ipv6Cidr[] = [
+  { network: [0, 0, 0, 0, 0, 0, 0, 0], prefix: 96 },
+  { network: [0, 0, 0, 0, 0, 0xffff, 0, 0], prefix: 96 },
+  { network: [0x0064, 0xff9b, 0, 0, 0, 0, 0, 0], prefix: 96 },
+  { network: [0x0064, 0xff9b, 1, 0, 0, 0, 0, 0], prefix: 48 },
+  { network: [0x0100, 0, 0, 0, 0, 0, 0, 0], prefix: 64 },
+  { network: [0x0100, 0, 0, 1, 0, 0, 0, 0], prefix: 64 },
+  { network: [0x2001, 0, 0, 0, 0, 0, 0, 0], prefix: 23 },
+  { network: [0x2001, 0x0db8, 0, 0, 0, 0, 0, 0], prefix: 32 },
+  { network: [0x2002, 0, 0, 0, 0, 0, 0, 0], prefix: 16 },
+  { network: [0x2620, 0x004f, 0x8000, 0, 0, 0, 0, 0], prefix: 48 },
+  { network: [0x3fff, 0, 0, 0, 0, 0, 0, 0], prefix: 20 },
+  { network: [0x5f00, 0, 0, 0, 0, 0, 0, 0], prefix: 16 },
+  { network: [0xfc00, 0, 0, 0, 0, 0, 0, 0], prefix: 7 },
+  { network: [0xfe80, 0, 0, 0, 0, 0, 0, 0], prefix: 10 },
+  { network: [0xff00, 0, 0, 0, 0, 0, 0, 0], prefix: 8 },
+];
 
-  return true;
-}
-
-function hasIpv6Prefix(groups: number[], prefix: number, expected: number[]): boolean {
-  const fullGroups = Math.floor(prefix / 16);
-  for (let index = 0; index < fullGroups; index += 1) {
-    if (groups[index] !== (expected[index] ?? 0)) {
+function isIpv4InCidr(octets: [number, number, number, number], range: Ipv4Cidr): boolean {
+  const fullOctets = Math.floor(range.prefix / 8);
+  for (let index = 0; index < fullOctets; index += 1) {
+    if (octets[index] !== range.network[index]) {
       return false;
     }
   }
 
-  const remainingBits = prefix % 16;
+  const remainingBits = range.prefix % 8;
+  if (remainingBits === 0) {
+    return true;
+  }
+
+  const mask = (0xff << (8 - remainingBits)) & 0xff;
+  return (
+    (octets[fullOctets] & mask) ===
+    (range.network[fullOctets] & mask)
+  );
+}
+
+function isIpv6InCidr(groups: number[], range: Ipv6Cidr): boolean {
+  const fullGroups = Math.floor(range.prefix / 16);
+  for (let index = 0; index < fullGroups; index += 1) {
+    if (groups[index] !== range.network[index]) {
+      return false;
+    }
+  }
+
+  const remainingBits = range.prefix % 16;
   if (remainingBits === 0) {
     return true;
   }
@@ -216,52 +258,19 @@ function hasIpv6Prefix(groups: number[], prefix: number, expected: number[]): bo
   const mask = (0xffff << (16 - remainingBits)) & 0xffff;
   return (
     (groups[fullGroups] & mask) ===
-    ((expected[fullGroups] ?? 0) & mask)
+    (range.network[fullGroups] & mask)
   );
 }
 
-function last32BitsAsIpv4(groups: number[]): [number, number, number, number] {
-  const first = groups[6];
-  const second = groups[7];
-  return [first >> 8, first & 0xff, second >> 8, second & 0xff];
+function isPublicIpv4(octets: [number, number, number, number]): boolean {
+  return !IPV4_DENYLIST.some((range) => isIpv4InCidr(octets, range));
 }
 
 function isPublicIpv6(groups: number[]): boolean {
-  const allZero = groups.every((group) => group === 0);
-  if (allZero) {
+  if (groups[0] === 0 || groups[0] === 0xffff) {
     return false;
   }
-
-  const isMappedIpv4 =
-    groups.slice(0, 5).every((group) => group === 0) && groups[5] === 0xffff;
-  const isCompatibleIpv4 = groups.slice(0, 6).every((group) => group === 0);
-  if (isMappedIpv4) {
-    return isPublicIpv4(last32BitsAsIpv4(groups));
-  }
-  if (isCompatibleIpv4) {
-    return false;
-  }
-
-  if (groups[0] === 0) {
-    return false;
-  }
-
-  if (
-    hasIpv6Prefix(groups, 7, [0xfc00]) ||
-    hasIpv6Prefix(groups, 10, [0xfe80]) ||
-    hasIpv6Prefix(groups, 8, [0xff00]) ||
-    hasIpv6Prefix(groups, 32, [0x2001, 0x0db8]) ||
-    hasIpv6Prefix(groups, 48, [0x2001, 0x0002]) ||
-    hasIpv6Prefix(groups, 28, [0x2001, 0x0010]) ||
-    hasIpv6Prefix(groups, 28, [0x2001, 0x0020]) ||
-    hasIpv6Prefix(groups, 20, [0x3fff]) ||
-    hasIpv6Prefix(groups, 16, [0xffff]) ||
-    hasIpv6Prefix(groups, 64, [0x0100, 0x0000, 0x0000, 0x0000])
-  ) {
-    return false;
-  }
-
-  return true;
+  return !IPV6_DENYLIST.some((range) => isIpv6InCidr(groups, range));
 }
 
 function stripIpv6Brackets(value: string): string | null {
@@ -396,6 +405,163 @@ function hasUrlCredentials(value: string, url: URL): boolean {
 
 export function isPublicDestination(value: unknown): boolean {
   return normalizedDestinationHost(extractDestinationHost(value)) !== null;
+}
+
+export interface PublicDestinationValidationOptions {
+  resolver?: PublicDestinationResolver;
+  fetcher?: typeof fetch;
+}
+
+function normalizePublicIpLiteral(value: unknown): string | null {
+  if (typeof value !== "string" || value.length === 0) {
+    return null;
+  }
+  if (value !== value.trim() || hasControlCharacters(value)) {
+    return null;
+  }
+
+  const withoutBrackets = stripIpv6Brackets(value);
+  if (!withoutBrackets) {
+    return null;
+  }
+
+  const ip = parseIpLiteral(withoutBrackets);
+  if (!ip) {
+    return null;
+  }
+
+  return ip.kind === "ipv4"
+    ? isPublicIpv4(ip.octets)
+      ? withoutBrackets
+      : null
+    : isPublicIpv6(ip.groups)
+      ? withoutBrackets
+      : null;
+}
+
+type DnsRecordType = 1 | 28;
+
+function parseDnsJsonAnswers(
+  payload: unknown,
+  recordType: DnsRecordType,
+): string[] | null {
+  if (!isInputRecord(payload) || payload.Status !== 0) {
+    return null;
+  }
+
+  if (payload.Answer === undefined) {
+    return [];
+  }
+  if (!Array.isArray(payload.Answer)) {
+    return null;
+  }
+
+  const addresses: string[] = [];
+  for (const answer of payload.Answer) {
+    if (!isInputRecord(answer)) {
+      return null;
+    }
+    if (answer.type !== recordType) {
+      continue;
+    }
+    if (typeof answer.data !== "string") {
+      return null;
+    }
+    addresses.push(answer.data);
+  }
+
+  return addresses;
+}
+
+async function queryCloudflareDns(
+  hostname: string,
+  type: "A" | "AAAA",
+  recordType: DnsRecordType,
+  fetcher: typeof fetch,
+): Promise<string[]> {
+  const url = new URL(CLOUDFLARE_DOH_ENDPOINT);
+  url.searchParams.set("name", hostname);
+  url.searchParams.set("type", type);
+
+  const response = await fetcher(url, {
+    headers: { accept: "application/dns-json" },
+  });
+  if (!response.ok) {
+    throw new Error("DNS query failed");
+  }
+
+  const payload: unknown = await response.json();
+  const addresses = parseDnsJsonAnswers(payload, recordType);
+  if (!addresses) {
+    throw new Error("DNS response is invalid");
+  }
+  return addresses;
+}
+
+async function resolveWithCloudflareDns(
+  hostname: string,
+  fetcher: typeof fetch,
+): Promise<readonly string[]> {
+  const [ipv4, ipv6] = await Promise.all([
+    queryCloudflareDns(hostname, "A", 1, fetcher),
+    queryCloudflareDns(hostname, "AAAA", 28, fetcher),
+  ]);
+  const addresses = [...ipv4, ...ipv6];
+  if (addresses.length === 0) {
+    throw new Error("DNS returned no addresses");
+  }
+  return addresses;
+}
+
+/**
+ * Revalidate a destination immediately before Task 4 probes it. Hostnames
+ * are resolved through the injected resolver or Cloudflare DoH, and every
+ * returned address must be a public IP literal. Literal destinations retain
+ * the synchronous checks and do not perform a DNS query.
+ */
+export async function validatePublicDestination(
+  value: unknown,
+  options: PublicDestinationValidationOptions = {},
+): Promise<ValidationResult<PublicDestination>> {
+  const host = normalizedDestinationHost(extractDestinationHost(value));
+  if (!host) {
+    return failure("destination must be a public host or IP");
+  }
+
+  if (parseIpLiteral(host)) {
+    return {
+      ok: true,
+      value: { host, addresses: [host] },
+    };
+  }
+
+  const resolver = options.resolver ?? ((hostname: string) =>
+    resolveWithCloudflareDns(hostname, options.fetcher ?? fetch));
+
+  let resolvedAddresses: readonly string[];
+  try {
+    resolvedAddresses = await resolver(host);
+  } catch {
+    return failure("destination DNS resolution failed");
+  }
+
+  if (!Array.isArray(resolvedAddresses) || resolvedAddresses.length === 0) {
+    return failure("destination DNS returned no addresses");
+  }
+
+  const addresses: string[] = [];
+  for (const address of resolvedAddresses) {
+    const normalizedAddress = normalizePublicIpLiteral(address);
+    if (!normalizedAddress) {
+      return failure("destination DNS returned a non-public address");
+    }
+    addresses.push(normalizedAddress);
+  }
+
+  return {
+    ok: true,
+    value: { host, addresses },
+  };
 }
 
 function validateUrl(value: unknown, protocols: readonly string[]): ValidationResult<string> {

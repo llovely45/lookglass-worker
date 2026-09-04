@@ -44,6 +44,15 @@ export interface MonitorInput {
   enabled: boolean;
 }
 
+export interface PublicDestination {
+  host: string;
+  addresses: string[];
+}
+
+export type PublicDestinationResolver = (
+  hostname: string,
+) => Promise<readonly string[]>;
+
 export interface RawCheckResult {
   monitor_id: string;
   checked_at: number;

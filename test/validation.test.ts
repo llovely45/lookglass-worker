@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   isPublicDestination,
+  validatePublicDestination,
   validateHttpTarget,
   validateMonitorInput,
   validatePanelInput,
@@ -79,14 +80,42 @@ describe("public destination validation", () => {
     ["ff02::1", "IPv6 multicast"],
     ["0.0.0.0", "IPv4 unspecified"],
     ["::", "IPv6 unspecified"],
+    ["192.0.0.1", "IPv4 protocol assignment"],
     ["192.0.2.1", "IPv4 documentation"],
+    ["192.0.0.9", "IPv4 protocol assignment"],
+    ["192.31.196.1", "IPv4 AS112"],
+    ["192.52.193.1", "IPv4 AMT"],
+    ["192.88.99.2", "deprecated IPv4 6to4 relay"],
+    ["192.175.48.1", "IPv4 AS112 delegation"],
+    ["192.88.99.1", "deprecated IPv4 6to4 relay"],
     ["198.51.100.1", "IPv4 documentation"],
     ["203.0.113.1", "IPv4 documentation"],
+    ["198.19.255.254", "IPv4 benchmarking"],
+    ["100.64.0.1", "IPv4 shared address space"],
+    ["240.0.0.1", "IPv4 reserved"],
+    ["255.255.255.255", "IPv4 limited broadcast"],
+    ["168.63.129.16", "Azure platform virtual IP"],
+    ["::192.0.2.1", "deprecated IPv4-compatible IPv6"],
     ["2001:db8::1", "IPv6 documentation"],
+    ["2001::1", "IPv6 protocol assignment"],
+    ["2001:1ff::1", "IPv6 protocol assignment boundary"],
     ["2001:2::1", "IPv6 benchmarking"],
     ["3fff::1", "IPv6 documentation"],
     ["::8.8.8.8", "IPv4-compatible IPv6"],
     ["::ffff:192.168.1.1", "mapped RFC1918"],
+    ["::ffff:8.8.8.8", "IPv4-mapped public address"],
+    ["64:ff9b::8.8.8.8", "IPv4 translation prefix"],
+    ["64:ff9b:1::1", "IPv4 translation local-use prefix"],
+    ["100::1", "IPv6 discard-only"],
+    ["100:0:0:1::1", "IPv6 dummy prefix"],
+    ["2001:3::1", "IPv6 AMT"],
+    ["2001:4:112::1", "IPv6 AS112"],
+    ["2001:10::1", "deprecated IPv6 ORCHID"],
+    ["2001:20::1", "IPv6 ORCHIDv2"],
+    ["2001:30::1", "IPv6 Drone Remote ID"],
+    ["2002::1", "IPv6 6to4"],
+    ["2620:4f:8000::1", "IPv6 AS112 delegation"],
+    ["5f00::1", "IPv6 SRv6 SID"],
     ["169.254.169.254", "cloud metadata"],
     ["metadata.google.internal", "metadata hostname"],
   ])("rejects %s (%s)", (destination) => {
@@ -115,6 +144,120 @@ describe("public destination validation", () => {
       host: "2001:4860:4860::8888",
       port: 443,
     });
+  });
+});
+
+describe("DNS revalidation before probing", () => {
+  it("accepts a hostname when every injected A/AAAA answer is public", async () => {
+    const result = await validatePublicDestination("monitor.example.com", {
+      resolver: async (hostname) => {
+        expect(hostname).toBe("monitor.example.com");
+        return ["8.8.8.8", "2001:4860:4860::8888"];
+      },
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        host: "monitor.example.com",
+        addresses: ["8.8.8.8", "2001:4860:4860::8888"],
+      },
+    });
+  });
+
+  it("rejects a hostname when injected DNS returns a private answer", async () => {
+    const result = await validatePublicDestination("monitor.example.com", {
+      resolver: async () => ["10.0.0.1"],
+    });
+
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects a hostname when injected DNS mixes public and private answers", async () => {
+    const result = await validatePublicDestination("monitor.example.com", {
+      resolver: async () => ["8.8.8.8", "192.168.1.10"],
+    });
+
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects a hostname when injected DNS has no answers", async () => {
+    const result = await validatePublicDestination("monitor.example.com", {
+      resolver: async () => [],
+    });
+
+    expect(result.ok).toBe(false);
+  });
+
+  it("keeps synchronous literal checks and does not resolve an IP literal", async () => {
+    let resolverCalls = 0;
+    const result = await validatePublicDestination("8.8.8.8", {
+      resolver: async () => {
+        resolverCalls += 1;
+        return ["10.0.0.1"];
+      },
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: { host: "8.8.8.8", addresses: ["8.8.8.8"] },
+    });
+    expect(resolverCalls).toBe(0);
+  });
+
+  it("uses Cloudflare DNS-over-HTTPS A and AAAA queries by default", async () => {
+    const requests: Array<{ url: URL; headers: Headers }> = [];
+    const fetcher: typeof fetch = async (input, init) => {
+      const url = new URL(input.toString());
+      requests.push({ url, headers: new Headers(init?.headers) });
+      const answer = url.searchParams.get("type") === "A"
+        ? { type: 1, data: "8.8.8.8" }
+        : { type: 28, data: "2001:4860:4860::8888" };
+      return new Response(JSON.stringify({ Status: 0, Answer: [answer] }), {
+        status: 200,
+        headers: { "content-type": "application/dns-json" },
+      });
+    };
+
+    const result = await validatePublicDestination("monitor.example.com", {
+      fetcher,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(requests.map(({ url }) => [url.hostname, url.searchParams.get("type")])).toEqual([
+      ["cloudflare-dns.com", "A"],
+      ["cloudflare-dns.com", "AAAA"],
+    ]);
+    expect(requests.every(({ headers }) => headers.get("accept") === "application/dns-json")).toBe(true);
+  });
+
+  it("rejects a non-public answer returned by Cloudflare DNS-over-HTTPS", async () => {
+    const fetcher: typeof fetch = async (input) => {
+      const url = new URL(input.toString());
+      const answer = url.searchParams.get("type") === "A"
+        ? { type: 1, data: "10.0.0.1" }
+        : { type: 28, data: "2001:4860:4860::8888" };
+      return new Response(JSON.stringify({ Status: 0, Answer: [answer] }), {
+        status: 200,
+      });
+    };
+
+    const result = await validatePublicDestination("monitor.example.com", {
+      fetcher,
+    });
+
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects empty A and AAAA answers returned by Cloudflare DNS-over-HTTPS", async () => {
+    const fetcher: typeof fetch = async () =>
+      new Response(JSON.stringify({ Status: 0, Answer: [] }), { status: 200 });
+
+    const result = await validatePublicDestination("monitor.example.com", {
+      fetcher,
+    });
+
+    expect(result.ok).toBe(false);
   });
 });
 
