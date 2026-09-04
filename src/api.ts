@@ -17,14 +17,21 @@ import {
   insertMonitor,
   insertPanel,
   listAllMonitors,
-  listAllMonitorsByPanel,
   listAllPanels,
+  listAllMonitorsByPanel,
+  updateMonitorOrder,
+  updatePanelOrder,
   updateMonitor,
   updatePanel,
 } from "./db";
 import { corsMiddleware, exactOriginMiddleware } from "./cors";
 import type { Env } from "./types";
-import { validateMonitorInput, validatePanelInput } from "./validation";
+import {
+  validateMonitorInput,
+  validateMonitorOrderInput,
+  validatePanelInput,
+  validatePanelOrderInput,
+} from "./validation";
 
 type AppEnv = { Bindings: Env };
 type AppContext = Context<AppEnv>;
@@ -116,6 +123,17 @@ function newId(): string {
   return crypto.randomUUID();
 }
 
+function hasExactlyTheseIds(
+  submittedIds: readonly string[],
+  currentIds: readonly string[],
+): boolean {
+  if (submittedIds.length !== currentIds.length) {
+    return false;
+  }
+  const current = new Set(currentIds);
+  return submittedIds.every((id) => current.has(id));
+}
+
 export function createApp(): App {
   const app = new Hono<AppEnv>();
 
@@ -165,6 +183,36 @@ export function createApp(): App {
 
   app.get("/api/admin/panels", async (c) => {
     return c.json(await listAllPanels(c.env.DB));
+  });
+
+  app.patch("/api/admin/panels/order", async (c) => {
+    const body = await readJson(c);
+    if (body === undefined) {
+      return errorResponse(c, 422, "invalid_json", "request body must be valid JSON");
+    }
+
+    const validation = validatePanelOrderInput(body);
+    if (!validation.ok) {
+      return errorResponse(c, 422, "invalid_input", validation.message);
+    }
+
+    const panels = await listAllPanels(c.env.DB);
+    if (
+      !hasExactlyTheseIds(
+        validation.value.items.map((item) => item.id),
+        panels.map((panel) => panel.id),
+      )
+    ) {
+      return errorResponse(
+        c,
+        422,
+        "invalid_input",
+        "items must include every panel exactly once",
+      );
+    }
+
+    await updatePanelOrder(c.env.DB, validation.value.items, nowSeconds());
+    return c.json({ reordered: true });
   });
 
   app.post("/api/admin/panels", async (c) => {
@@ -227,6 +275,60 @@ export function createApp(): App {
         ? await listAllMonitors(c.env.DB)
         : await listAllMonitorsByPanel(c.env.DB, panelId),
     );
+  });
+
+  app.patch("/api/admin/monitors/order", async (c) => {
+    const body = await readJson(c);
+    if (body === undefined) {
+      return errorResponse(c, 422, "invalid_json", "request body must be valid JSON");
+    }
+
+    const validation = validateMonitorOrderInput(body);
+    if (!validation.ok) {
+      return errorResponse(c, 422, "invalid_input", validation.message);
+    }
+
+    const panel = await getPanel(c.env.DB, validation.value.panel_id);
+    if (!panel) {
+      return errorResponse(c, 422, "invalid_input", "panel_id references an unknown panel");
+    }
+
+    const monitors = await listAllMonitors(c.env.DB);
+    const monitorsById = new Map(monitors.map((monitor) => [monitor.id, monitor]));
+    for (const item of validation.value.items) {
+      const monitor = monitorsById.get(item.id);
+      if (!monitor) {
+        return errorResponse(c, 422, "invalid_input", "items contains an unknown monitor");
+      }
+      if (monitor.panel_id !== validation.value.panel_id) {
+        return errorResponse(
+          c,
+          422,
+          "invalid_input",
+          "items contains a monitor from another panel",
+        );
+      }
+    }
+
+    const panelMonitors = monitors.filter(
+      (monitor) => monitor.panel_id === validation.value.panel_id,
+    );
+    if (
+      !hasExactlyTheseIds(
+        validation.value.items.map((item) => item.id),
+        panelMonitors.map((monitor) => monitor.id),
+      )
+    ) {
+      return errorResponse(
+        c,
+        422,
+        "invalid_input",
+        "items must include every monitor for the panel exactly once",
+      );
+    }
+
+    await updateMonitorOrder(c.env.DB, validation.value.items, nowSeconds());
+    return c.json({ reordered: true });
   });
 
   app.post("/api/admin/monitors", async (c) => {

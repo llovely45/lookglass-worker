@@ -53,6 +53,20 @@ export interface MonitorInput {
   enabled: boolean;
 }
 
+export interface OrderItem {
+  id: string;
+  sort_order: number;
+}
+
+export interface PanelOrderInput {
+  items: OrderItem[];
+}
+
+export interface MonitorOrderInput {
+  panel_id: string;
+  items: OrderItem[];
+}
+
 export interface PublicDestination {
   host: string;
   addresses: string[];

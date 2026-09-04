@@ -18,18 +18,30 @@ type PreparedCall = {
 class ApiD1Mock {
   readonly prepared: PreparedCall[] = [];
   readonly writes: PreparedCall[] = [];
+  readonly batches: PreparedCall[][] = [];
   panelRows: unknown[] = [];
+  monitorRows: unknown[] = [];
 
   prepare(sql: string): D1PreparedStatement {
     const call: PreparedCall = { sql, binds: [] };
     this.prepared.push(call);
     const statement = {
+      get sql() {
+        return call.sql;
+      },
+      get binds() {
+        return call.binds;
+      },
       bind: (...values: unknown[]) => {
         call.binds = values;
         return statement;
       },
       all: async <T>() => ({
-        results: (sql.includes("FROM panels") ? this.panelRows : []) as T[],
+        results: (sql.includes("FROM panels")
+          ? this.panelRows
+          : sql.includes("FROM monitors")
+            ? this.monitorRows
+            : []) as T[],
         success: true,
         meta: {},
       }),
@@ -45,6 +57,18 @@ class ApiD1Mock {
   }
 
   async batch(statements: D1PreparedStatement[]) {
+    this.batches.push(
+      statements.map((statement) => {
+        const prepared = statement as unknown as {
+          sql?: string;
+          binds?: unknown[];
+        };
+        return {
+          sql: prepared.sql ?? "",
+          binds: prepared.binds ?? [],
+        };
+      }),
+    );
     return statements.map(() => ({
       success: true,
       meta: { changes: 1 },
@@ -368,5 +392,212 @@ describe("Lookglass admin API", () => {
     expect(db.prepared[0].sql).toMatch(/FROM\s+monitors/i);
     expect(db.prepared[0].sql).toMatch(/WHERE\s+panel_id\s*=\s*\?/i);
     expect(db.prepared[0].binds).toEqual(["p1"]);
+  });
+
+  it("reorders complete panel and monitor lists in one D1 batch each", async () => {
+    const { env, db } = makeEnv();
+    const app = createApp();
+    const cookie = await login(app, env);
+    db.panelRows = [
+      {
+        id: "p1",
+        name: "Primary",
+        logo_url: null,
+        sort_order: 0,
+        enabled: 1,
+        created_at: 1,
+        updated_at: 1,
+      },
+      {
+        id: "p2",
+        name: "Backup",
+        logo_url: null,
+        sort_order: 1,
+        enabled: 1,
+        created_at: 1,
+        updated_at: 1,
+      },
+    ];
+    db.monitorRows = [
+      {
+        id: "m1",
+        panel_id: "p1",
+        name: "Homepage",
+        logo_url: null,
+        kind: "http_get",
+        target: "https://example.com/health",
+        port: null,
+        sort_order: 0,
+        enabled: 1,
+        created_at: 1,
+        updated_at: 1,
+      },
+      {
+        id: "m2",
+        panel_id: "p1",
+        name: "API",
+        logo_url: null,
+        kind: "http_get",
+        target: "https://example.com/api",
+        port: null,
+        sort_order: 1,
+        enabled: 1,
+        created_at: 1,
+        updated_at: 1,
+      },
+    ];
+
+    db.prepared.length = 0;
+    db.batches.length = 0;
+    const panelResponse = await app.request(
+      "/api/admin/panels/order",
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: cookie,
+          Origin: FRONTEND_ORIGIN,
+        },
+        body: JSON.stringify({
+          items: [
+            { id: "p2", sort_order: 0 },
+            { id: "p1", sort_order: 1 },
+          ],
+        }),
+      },
+      env,
+    );
+
+    expect(panelResponse.status).toBe(200);
+    await expect(panelResponse.json()).resolves.toEqual({ reordered: true });
+    expect(db.batches).toHaveLength(1);
+    expect(db.batches[0]).toHaveLength(2);
+    expect(db.batches[0].map(({ sql }) => sql)).toEqual([
+      expect.stringMatching(/UPDATE\s+panels/i),
+      expect.stringMatching(/UPDATE\s+panels/i),
+    ]);
+    expect(db.batches[0].map(({ binds }) => [binds[0], binds[2]])).toEqual([
+      [0, "p2"],
+      [1, "p1"],
+    ]);
+
+    db.prepared.length = 0;
+    db.batches.length = 0;
+    const monitorResponse = await app.request(
+      "/api/admin/monitors/order",
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: cookie,
+          Origin: FRONTEND_ORIGIN,
+        },
+        body: JSON.stringify({
+          panel_id: "p1",
+          items: [
+            { id: "m2", sort_order: 0 },
+            { id: "m1", sort_order: 1 },
+          ],
+        }),
+      },
+      env,
+    );
+
+    expect(monitorResponse.status).toBe(200);
+    await expect(monitorResponse.json()).resolves.toEqual({ reordered: true });
+    expect(db.batches).toHaveLength(1);
+    expect(db.batches[0]).toHaveLength(2);
+    expect(db.batches[0].map(({ sql }) => sql)).toEqual([
+      expect.stringMatching(/UPDATE\s+monitors/i),
+      expect.stringMatching(/UPDATE\s+monitors/i),
+    ]);
+    expect(db.batches[0].map(({ binds }) => [binds[0], binds[2]])).toEqual([
+      [0, "m2"],
+      [1, "m1"],
+    ]);
+  });
+
+  it("rejects invalid, incomplete, duplicate, unknown, and cross-panel order inputs before writes", async () => {
+    const { env, db } = makeEnv();
+    const app = createApp();
+    const cookie = await login(app, env);
+    db.panelRows = [
+      { id: "p1", sort_order: 0 },
+      { id: "p2", sort_order: 1 },
+    ];
+    db.monitorRows = [
+      { id: "m1", panel_id: "p1", sort_order: 0 },
+      { id: "m2", panel_id: "p2", sort_order: 0 },
+    ];
+
+    const requests = [
+      {
+        path: "/api/admin/panels/order",
+        body: { items: [{ id: "p1", sort_order: 0 }, { id: "p1", sort_order: 1 }] },
+      },
+      {
+        path: "/api/admin/panels/order",
+        body: { items: [{ id: "p1", sort_order: 0 }, { id: "missing", sort_order: 1 }] },
+      },
+      {
+        path: "/api/admin/panels/order",
+        body: { items: [{ id: "p1", sort_order: 0 }, { id: "p2", sort_order: 0 }] },
+      },
+      {
+        path: "/api/admin/panels/order",
+        body: { items: [{ id: "p1", sort_order: 0 }] },
+      },
+      {
+        path: "/api/admin/monitors/order",
+        body: {
+          panel_id: "p1",
+          items: [{ id: "m1", sort_order: 0 }, { id: "m2", sort_order: 1 }],
+        },
+      },
+      {
+        path: "/api/admin/monitors/order",
+        body: {
+          panel_id: "p1",
+          items: [{ id: "m1", sort_order: 0 }, { id: "missing", sort_order: 1 }],
+        },
+      },
+      {
+        path: "/api/admin/monitors/order",
+        body: {
+          panel_id: "p1",
+          items: [{ id: "m1", sort_order: 0 }, { id: "m1", sort_order: 1 }],
+        },
+      },
+      {
+        path: "/api/admin/monitors/order",
+        body: {
+          panel_id: "p1",
+          items: [{ id: "m1", sort_order: 0.5 }],
+        },
+      },
+    ];
+
+    for (const request of requests) {
+      db.prepared.length = 0;
+      db.writes.length = 0;
+      db.batches.length = 0;
+      const response = await app.request(
+        request.path,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Cookie: cookie,
+            Origin: FRONTEND_ORIGIN,
+          },
+          body: JSON.stringify(request.body),
+        },
+        env,
+      );
+
+      expect(response.status, request.path).toBe(422);
+      expect(db.writes, request.path).toHaveLength(0);
+      expect(db.batches, request.path).toHaveLength(0);
+    }
   });
 });

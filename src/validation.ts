@@ -1,7 +1,10 @@
 import type {
   MonitorInput,
   MonitorKind,
+  MonitorOrderInput,
+  OrderItem,
   PanelInput,
+  PanelOrderInput,
   PublicDestination,
   PublicDestinationResolver,
   ValidationResult,
@@ -651,6 +654,71 @@ function validateSortOrder(value: unknown): ValidationResult<number> {
     return failure("sort_order must be an integer");
   }
   return { ok: true, value: value as number };
+}
+
+function validateOrderItems(value: unknown): ValidationResult<OrderItem[]> {
+  if (!Array.isArray(value)) {
+    return failure("items must be an array");
+  }
+
+  const ids = new Set<string>();
+  const sortOrders = new Set<number>();
+  const items: OrderItem[] = [];
+  for (const item of value) {
+    if (!isInputRecord(item)) {
+      return failure("each order item must be an object");
+    }
+
+    const id = validateIdentifier(item.id, "items.id");
+    if (!id.ok) {
+      return id;
+    }
+    if (ids.has(id.value)) {
+      return failure("items must not contain duplicate ids");
+    }
+    ids.add(id.value);
+
+    if (!("sort_order" in item)) {
+      return failure("items.sort_order must be an integer");
+    }
+    const sortOrder = validateSortOrder(item.sort_order);
+    if (!sortOrder.ok) {
+      return sortOrder;
+    }
+    if (sortOrders.has(sortOrder.value)) {
+      return failure("sort_order values must be distinct");
+    }
+    sortOrders.add(sortOrder.value);
+    items.push({ id: id.value, sort_order: sortOrder.value });
+  }
+
+  return { ok: true, value: items };
+}
+
+export function validatePanelOrderInput(
+  input: unknown,
+): ValidationResult<PanelOrderInput> {
+  if (!isInputRecord(input)) {
+    return failure("panel order input must be an object");
+  }
+  const items = validateOrderItems(input.items);
+  return items.ok ? { ok: true, value: { items: items.value } } : items;
+}
+
+export function validateMonitorOrderInput(
+  input: unknown,
+): ValidationResult<MonitorOrderInput> {
+  if (!isInputRecord(input)) {
+    return failure("monitor order input must be an object");
+  }
+  const panelId = validateIdentifier(input.panel_id, "panel_id");
+  if (!panelId.ok) {
+    return panelId;
+  }
+  const items = validateOrderItems(input.items);
+  return items.ok
+    ? { ok: true, value: { panel_id: panelId.value, items: items.value } }
+    : items;
 }
 
 function validateEnabled(value: unknown): ValidationResult<boolean> {

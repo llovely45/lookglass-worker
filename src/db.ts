@@ -6,6 +6,7 @@ import type {
 import type {
   CheckStatus,
   MonitorInput,
+  OrderItem,
   MonitorRecord,
   PanelInput,
   PanelRecord,
@@ -360,6 +361,28 @@ export async function updatePanel(
   return changed(result);
 }
 
+export async function updatePanelOrder(
+  db: D1Database,
+  items: readonly OrderItem[],
+  nowSeconds: number,
+): Promise<void> {
+  if (items.length === 0) {
+    return;
+  }
+
+  await db.batch(
+    items.map((item) =>
+      db
+        .prepare(
+          `UPDATE panels
+           SET sort_order = ?, updated_at = ?
+           WHERE id = ?`,
+        )
+        .bind(item.sort_order, nowSeconds, item.id),
+    ),
+  );
+}
+
 export async function deletePanel(
   db: D1Database,
   id: string,
@@ -442,6 +465,28 @@ export async function updateMonitor(
     )
     .run();
   return changed(result);
+}
+
+export async function updateMonitorOrder(
+  db: D1Database,
+  items: readonly OrderItem[],
+  nowSeconds: number,
+): Promise<void> {
+  if (items.length === 0) {
+    return;
+  }
+
+  await db.batch(
+    items.map((item) =>
+      db
+        .prepare(
+          `UPDATE monitors
+           SET sort_order = ?, updated_at = ?
+           WHERE id = ?`,
+        )
+        .bind(item.sort_order, nowSeconds, item.id),
+    ),
+  );
 }
 
 export async function deleteMonitor(
