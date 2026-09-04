@@ -1,0 +1,7 @@
+[
+  {
+    "AllowedOrigins": ["https://lookglass-frontend.pages.dev"],
+    "AllowedMethods": ["GET"],
+    "ExposeHeaders": ["Content-Type", "ETag", "Cache-Control"]
+  }
+]
