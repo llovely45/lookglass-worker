@@ -14,6 +14,7 @@ import type {
 const START = 1_735_689_600;
 const MINUTE = START + 60;
 const BOUNDARY = START + 1_800;
+const JITTERED_BOUNDARY = BOUNDARY + 20;
 
 function panel(): PanelRecord {
   return {
@@ -137,6 +138,25 @@ describe("scheduled monitoring", () => {
     );
     expect(deps.writeStatusSnapshot).toHaveBeenCalledOnce();
     expect(calls.snapshots).toHaveLength(1);
+  });
+
+  it("writes at a Cron second offset and aligns the snapshot to the bucket", async () => {
+    const { deps, calls } = baseDeps();
+
+    await runScheduled(env(), JITTERED_BOUNDARY * 1_000, deps);
+
+    expect(deps.listResultsSince).toHaveBeenCalledWith(
+      expect.anything(),
+      BOUNDARY - 86_400,
+    );
+    expect(deps.deleteResultsBefore).toHaveBeenCalledWith(
+      expect.anything(),
+      BOUNDARY - 86_400,
+    );
+    expect(calls.snapshots).toHaveLength(1);
+    expect(calls.snapshots[0]).toEqual(
+      expect.objectContaining({ generatedAt: BOUNDARY }),
+    );
   });
 
   it("skips checks and writes when the scheduler lease is unavailable", async () => {

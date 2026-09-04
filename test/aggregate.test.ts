@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   aggregateResults,
+  halfHourStart,
   isHalfHourBoundary,
   type StatusSnapshot,
 } from "../src/aggregate";
@@ -175,6 +176,8 @@ describe("half-hour status aggregation", () => {
     expect(isHalfHourBoundary(START)).toBe(true);
     expect(isHalfHourBoundary(START + 1_799)).toBe(false);
     expect(isHalfHourBoundary(START + 1_800)).toBe(true);
+    expect(isHalfHourBoundary(START + 1_820)).toBe(true);
+    expect(halfHourStart(START + 1_820)).toBe(START + 1_800);
   });
 });
 

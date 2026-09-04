@@ -1,5 +1,6 @@
 import {
   aggregateResults,
+  halfHourStart,
   isHalfHourBoundary,
   RETENTION_SECONDS,
   type StatusSnapshot,
@@ -113,11 +114,15 @@ export async function runScheduled(
   const insertResults = deps.insertCheckResults ?? insertCheckResults;
   await insertResults(env.DB, results);
 
-  const cutoff = scheduledSeconds - RETENTION_SECONDS;
+  const shouldWriteSnapshot = isHalfHourBoundary(scheduledSeconds);
+  const snapshotGeneratedAt = shouldWriteSnapshot
+    ? halfHourStart(scheduledSeconds)
+    : scheduledSeconds;
+  const cutoff = snapshotGeneratedAt - RETENTION_SECONDS;
   const deleteOldResults = deps.deleteResultsBefore ?? deleteResultsBefore;
   await deleteOldResults(env.DB, cutoff);
 
-  if (!isHalfHourBoundary(scheduledSeconds)) {
+  if (!shouldWriteSnapshot) {
     return;
   }
 
@@ -131,7 +136,7 @@ export async function runScheduled(
     panels as readonly PanelRecord[],
     monitors,
     storedResults,
-    scheduledSeconds,
+    snapshotGeneratedAt,
   );
 
   const writeSnapshot = deps.writeStatusSnapshot ?? writeStatusSnapshot;

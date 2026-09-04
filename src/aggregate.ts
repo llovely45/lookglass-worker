@@ -36,6 +36,11 @@ export interface StatusSnapshot {
   }>;
 }
 
+/** Return the UTC epoch-aligned start of the half-hour containing `seconds`. */
+export function halfHourStart(seconds: number): number {
+  return Math.floor(seconds / HALF_HOUR_SECONDS) * HALF_HOUR_SECONDS;
+}
+
 function compareByOrder(
   left: { sort_order: number; id: string },
   right: { sort_order: number; id: string },
@@ -44,7 +49,7 @@ function compareByOrder(
 }
 
 function bucketStart(checkedAt: number): number {
-  return Math.floor(checkedAt / HALF_HOUR_SECONDS) * HALF_HOUR_SECONDS;
+  return halfHourStart(checkedAt);
 }
 
 function sampleFromResult(t: number, result: RawCheckResult): StatusSample {
@@ -156,5 +161,12 @@ export function aggregateResults(
 }
 
 export function isHalfHourBoundary(seconds: number): boolean {
-  return Number.isInteger(seconds) && seconds % HALF_HOUR_SECONDS === 0;
+  if (!Number.isInteger(seconds)) {
+    return false;
+  }
+
+  // Cloudflare Cron scheduledTime can have a stable second offset from the
+  // epoch minute (for example HH:30:20). Match the scheduled UTC minute and
+  // keep the snapshot timestamp itself aligned with half-hour epoch buckets.
+  return Math.floor(seconds / 60) % 30 === 0;
 }
