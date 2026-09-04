@@ -1,0 +1,4 @@
+FRONTEND_ORIGIN=https://lookglass-frontend.pages.dev
+R2_PUBLIC_BASE_URL=https://status.example.com
+ADMIN_TOKEN=replace-with-a-local-random-token
+SESSION_SECRET=replace-with-a-local-random-secret
