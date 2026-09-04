@@ -1,7 +1,11 @@
-[
-  {
-    "AllowedOrigins": ["https://lookglass-frontend.pages.dev"],
-    "AllowedMethods": ["GET"],
-    "ExposeHeaders": ["Content-Type", "ETag", "Cache-Control"]
-  }
-]
+{
+  "rules": [
+    {
+      "allowed": {
+        "origins": ["https://lookglass-frontend.pages.dev"],
+        "methods": ["GET"]
+      },
+      "exposeHeaders": ["Content-Type", "ETag", "Cache-Control"]
+    }
+  ]
+}

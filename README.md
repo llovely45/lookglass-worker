@@ -71,9 +71,10 @@ Before applying the commands below:
    `LOOKGLASS_D1_DATABASE_ID` GitHub repository Variable for the main-push
    deployment. For a direct local deployment, you may replace the empty
    `database_id` in your local working copy, but do not commit it.
-2. Create the `lookglass-status` R2 bucket, configure an R2 custom public
-   domain for it, and set `R2_PUBLIC_BASE_URL` to that exact public origin.
-   The public status object is `public/status.json`.
+2. Create the `lookglass-status` R2 bucket, enable an R2 public `r2.dev` URL
+   or configure an R2 custom public domain for it, and set
+   `R2_PUBLIC_BASE_URL` to that exact public origin. The public status object
+   is `public/status.json`.
 3. Set `LOOKGLASS_R2_PUBLIC_BASE_URL` and
    `LOOKGLASS_FRONTEND_ORIGIN` GitHub repository Variables to the exact
    deployed origins. The checked-in `r2-cors.json` contains the Pages default
@@ -109,9 +110,10 @@ API token, or secret is committed here.
 
 ## R2 CORS and static Pages data flow
 
-`r2-cors.json` allows only `GET` from one Pages origin and exposes
-`Content-Type`, `ETag`, and `Cache-Control`. Replace the checked-in Pages
-default example origin with the exact deployed Pages origin before running:
+`r2-cors.json` uses Wrangler's current `{ "rules": [...] }` request shape. It
+allows only `GET` from one Pages origin and exposes `Content-Type`, `ETag`, and
+`Cache-Control`. Replace the checked-in Pages default example origin with the
+exact deployed Pages origin before running:
 
 ```bash
 npx wrangler r2 bucket cors set lookglass-status --file r2-cors.json
