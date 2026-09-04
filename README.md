@@ -26,6 +26,25 @@ The checked-in `FRONTEND_ORIGIN` is the Pages default example
 `R2_PUBLIC_BASE_URL` is the non-production example `https://status.example.com`.
 Replace both with the deployed origins before production deployment.
 
+For the Worker GitHub Actions deployment, create these repository Variables
+with the exact deployed, non-secret values:
+
+- `LOOKGLASS_D1_DATABASE_ID`: the `database_id` returned by D1 creation.
+- `LOOKGLASS_FRONTEND_ORIGIN`: the exact deployed Pages origin.
+- `LOOKGLASS_R2_PUBLIC_BASE_URL`: the exact public R2 custom-domain origin.
+
+On a push to `main`, the workflow validates that all three Variables are
+non-empty, safely replaces the corresponding placeholder values in the
+runner-local `wrangler.jsonc`, and then runs the dry-run build and deploy.
+That replacement exists only on the CI runner; it is not written back to this
+repository and no real value is committed. Pull requests skip this injection
+step and continue to validate against the checked-in placeholders.
+
+Keep `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in GitHub repository
+Secrets, not Variables. Keep the Worker runtime credentials `ADMIN_TOKEN` and
+`SESSION_SECRET` in Wrangler/Cloudflare Secrets, not in this repository or in
+GitHub Variables. The workflow never injects or prints those credentials.
+
 For local development, copy `.dev.vars.example` to `.dev.vars` and replace the
 clearly non-production token and secret placeholders with local random values.
 `.dev.vars` is ignored by git.
@@ -48,18 +67,22 @@ Worker bundle and bindings without deploying it.
 
 Before applying the commands below:
 
-1. Run the D1 creation command and copy its generated `database_id` into
-   `wrangler.jsonc`.
+1. Run the D1 creation command and copy its generated `database_id` into the
+   `LOOKGLASS_D1_DATABASE_ID` GitHub repository Variable for the main-push
+   deployment. For a direct local deployment, you may replace the empty
+   `database_id` in your local working copy, but do not commit it.
 2. Create the `lookglass-status` R2 bucket, configure an R2 custom public
    domain for it, and set `R2_PUBLIC_BASE_URL` to that exact public origin.
    The public status object is `public/status.json`.
-3. Set `FRONTEND_ORIGIN` in `wrangler.jsonc` to the exact deployed Pages
-   origin. The checked-in `r2-cors.json` contains the Pages default example;
+3. Set `LOOKGLASS_R2_PUBLIC_BASE_URL` and
+   `LOOKGLASS_FRONTEND_ORIGIN` GitHub repository Variables to the exact
+   deployed origins. The checked-in `r2-cors.json` contains the Pages default
+   example;
    before applying it, replace `https://lookglass-frontend.pages.dev` with
    the exact deployed Pages origin and keep the single-origin `GET` rule.
 4. Keep the API token and secrets out of git. The D1 ID and deployed origins
-   are non-secret configuration values; replace the checked-in placeholders
-   through your protected deployment process before the main deployment. The
+   are non-secret configuration values; GitHub Actions replaces the checked-in
+   placeholders only in its runner-local copy before the main deployment. The
    two `secret put` commands prompt for values and do not place them in this
    repository.
 

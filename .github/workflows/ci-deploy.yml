@@ -31,6 +31,50 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Validate and inject production Worker variables
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          LOOKGLASS_D1_DATABASE_ID: ${{ vars.LOOKGLASS_D1_DATABASE_ID }}
+          LOOKGLASS_FRONTEND_ORIGIN: ${{ vars.LOOKGLASS_FRONTEND_ORIGIN }}
+          LOOKGLASS_R2_PUBLIC_BASE_URL: ${{ vars.LOOKGLASS_R2_PUBLIC_BASE_URL }}
+        run: |
+          set -eu
+          test -n "$LOOKGLASS_D1_DATABASE_ID"
+          test -n "$LOOKGLASS_FRONTEND_ORIGIN"
+          test -n "$LOOKGLASS_R2_PUBLIC_BASE_URL"
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          const configPath = 'wrangler.jsonc';
+          let config = fs.readFileSync(configPath, 'utf8');
+          const replacements = [
+            [
+              /("database_id"\s*:\s*)"(?:[^"\\]|\\.)*"(?=\s*[,}])/,
+              process.env.LOOKGLASS_D1_DATABASE_ID,
+            ],
+            [
+              /("FRONTEND_ORIGIN"\s*:\s*)"(?:[^"\\]|\\.)*"(?=\s*[,}])/,
+              process.env.LOOKGLASS_FRONTEND_ORIGIN,
+            ],
+            [
+              /("R2_PUBLIC_BASE_URL"\s*:\s*)"(?:[^"\\]|\\.)*"(?=\s*[,}])/,
+              process.env.LOOKGLASS_R2_PUBLIC_BASE_URL,
+            ],
+          ];
+
+          for (const [pattern, value] of replacements) {
+            if (typeof value !== 'string' || value.trim() === '') {
+              throw new Error('Required production Worker variable is empty');
+            }
+            if ((config.match(new RegExp(pattern.source, 'g')) ?? []).length !== 1) {
+              throw new Error(`Expected exactly one Wrangler setting for ${pattern}`);
+            }
+            config = config.replace(pattern, (_match, prefix) => `${prefix}${JSON.stringify(value)}`);
+          }
+
+          fs.writeFileSync(configPath, config);
+          NODE
+
       - name: Validate Wrangler deployment
         run: npm run build
 
