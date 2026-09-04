@@ -197,15 +197,34 @@ describe("scheduled monitoring", () => {
 
   it("logs an R2 failure after retaining the D1 results", async () => {
     const { deps, calls } = baseDeps();
+    const persistedRows = [
+      checkResult("old", BOUNDARY - 86_401, "error"),
+    ];
     const error = vi.fn();
     deps.logger = { error };
+    deps.insertCheckResults = vi.fn(async (_db, results) => {
+      calls.inserted.push([...results]);
+      persistedRows.push(...results);
+    });
+    deps.deleteResultsBefore = vi.fn(async (_db, cutoff) => {
+      calls.cleaned.push(cutoff);
+      for (let index = persistedRows.length - 1; index >= 0; index -= 1) {
+        if (persistedRows[index].checked_at < cutoff) {
+          persistedRows.splice(index, 1);
+        }
+      }
+    });
+    deps.listResultsSince = vi.fn(async (_db, cutoff) =>
+      persistedRows.filter(({ checked_at }) => checked_at >= cutoff),
+    );
     deps.writeStatusSnapshot = vi.fn(async () => {
       throw new Error("R2 unavailable");
     });
 
     await expect(runScheduled(env(), BOUNDARY * 1_000, deps)).resolves.toBeUndefined();
 
-    expect(calls.inserted).toHaveLength(1);
+    expect(persistedRows).toEqual([checkResult("m1", MINUTE)]);
+    expect(calls.cleaned).toEqual([BOUNDARY - 86_400]);
     expect(error).toHaveBeenCalledOnce();
   });
 });

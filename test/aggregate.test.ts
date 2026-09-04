@@ -71,6 +71,17 @@ function result(
   };
 }
 
+async function sha256Etag(payload: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(payload),
+  );
+  const hex = [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  return `"${hex}"`;
+}
+
 describe("half-hour status aggregation", () => {
   it("keeps the result with the greatest checked_at in one bucket", () => {
     const snapshot = aggregateResults(
@@ -209,6 +220,6 @@ describe("R2 status snapshot writes", () => {
       contentType: "application/json",
       cacheControl: "public, max-age=30, must-revalidate",
     });
-    expect(options.customMetadata?.etag).toMatch(/^\"[0-9a-f]{64}\"$/);
+    expect(options.customMetadata?.etag).toBe(await sha256Etag(body));
   });
 });
