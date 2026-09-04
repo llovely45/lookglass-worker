@@ -60,6 +60,13 @@ accident.
 The `0002_monitor_link_url.sql` migration adds this nullable field to existing
 databases. Apply all pending migrations before creating or editing monitors.
 
+The `0003_seed_navigation_links.sql` migration adds the 38 entries from the
+source navigation page under these six panels: 开发工具、代理工具、人工智能、
+设计资源、云服务 and 18+. The Lin-related, leisure, and software-
+recommendation panels are intentionally not seeded. Every seeded entry uses
+its source URL for both `target` and `link_url`, so it is monitored and opens
+the same destination in NAV mode.
+
 ## Local validation
 
 Run these commands from this directory:
